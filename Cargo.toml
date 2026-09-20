@@ -1,0 +1,59 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/USER/phone-scanner"
+authors = ["phone-scanner contributors"]
+
+[workspace.dependencies]
+ps-model = { path = "crates/ps-model" }
+ps-adb = { path = "crates/ps-adb" }
+ps-analyze = { path = "crates/ps-analyze" }
+
+anyhow = "1.0"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2 = "0.10"
+hex = "0.4"
+indexmap = { version = "2", features = ["serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Deliberate: the domain model is intentionally enum-heavy and self-documenting.
+module_name_repetitions = "allow"
+# Findings carry long human-readable strings; this fires constantly and adds nothing.
+too_many_lines = "allow"
+# Panics are a bug in this tool, not a documented contract.
+missing_panics_doc = "allow"
+# Fallible functions here nearly all return one transport error type whose
+# variants are documented on the type. A per-method `# Errors` section would
+# restate the same sentence a dozen times; the interesting cases document it.
+missing_errors_doc = "allow"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

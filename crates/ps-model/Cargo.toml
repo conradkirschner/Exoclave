@@ -1,0 +1,20 @@
+[package]
+name = "ps-model"
+description = "Core domain model: threat tiers, trust provenance, findings and reports."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+chrono.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+{
+  "name": "example-feed",
+  "source_url": "https://example.invalid/not-a-real-feed",
+  "license": "CC0-1.0",
+  "indicators": [
+    {
+      "app_id": "com.example.definitelynotspyware",
+      "class": "stalkerware",
+      "name": "Example Stalkerware"
+    },
+    {
+      "app_id": "com.example.parentalcontrol",
+      "class": "watchware",
+      "name": "Example Parental Control"
+    }
+  ]
+}

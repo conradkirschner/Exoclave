@@ -1,0 +1,9 @@
+/target
+/out
+/reports
+/artifacts
+/feeds/*.json
+!/feeds/example.json
+.env
+*.pcap
+*.pcapng

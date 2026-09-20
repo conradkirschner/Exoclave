@@ -1,0 +1,35 @@
+# Convenience wrapper around the same Dockerfile.
+#
+# The scanner reaches the phone through an adb server running on the host, so
+# start that first:
+#
+#     adb -a -P 5037 nodaemon server
+#
+# A Linux container cannot claim a USB device on Windows or macOS; this is the
+# supported way round it and needs no extra privileges.
+
+services:
+  scanner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+    image: exoclave:latest
+    environment:
+      ADB_SERVER_SOCKET: tcp:host.docker.internal:5037
+      PS_LOG: ${PS_LOG:-warn}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./reports:/work
+      - ./feeds:/feeds:ro
+    command: ["--help"]
+
+  # `docker compose run --rm check`
+  check:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: test
+    image: exoclave:test
+    command: ["true"]

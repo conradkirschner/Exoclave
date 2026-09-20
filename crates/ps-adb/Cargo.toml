@@ -1,0 +1,18 @@
+[package]
+name = "ps-adb"
+description = "Typed, testable access to a device over the Android Debug Bridge."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ps-model.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
