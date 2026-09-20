@@ -64,6 +64,10 @@ pub struct Observations {
     pub notification_listeners: Observed<Vec<ComponentName>>,
     pub device_admins: Observed<Vec<ComponentName>>,
     pub claimed_boot_state: Observed<BootState>,
+    /// Full build properties, for integrity checks.
+    pub properties: Observed<std::collections::BTreeMap<String, String>>,
+    /// On-disk traces of a rooted system. Presence is credible; absence is not.
+    pub root_artifacts: Observed<Vec<String>>,
 }
 
 impl Observations {
@@ -85,6 +89,8 @@ impl Observations {
             notification_listeners: Observed::from_result(device.notification_listeners().await),
             device_admins: Observed::from_result(device.device_admins().await),
             claimed_boot_state: Observed::from_result(device.claimed_boot_state().await),
+            properties: Observed::from_result(device.properties().await),
+            root_artifacts: Observed::from_result(device.root_artifacts().await),
         })
     }
 

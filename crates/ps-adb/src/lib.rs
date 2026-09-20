@@ -200,6 +200,56 @@ impl<S: Shell> Device<S> {
         })
     }
 
+    /// Every build property, for integrity checks beyond identity.
+    pub async fn properties(&self) -> AdbResult<std::collections::BTreeMap<String, String>> {
+        Ok(parse::getprop(&self.shell_out("getprop").await?))
+    }
+
+    /// Look for the on-disk traces of a rooted system.
+    ///
+    /// Self-reported, and therefore forgeable by exactly the privileged code
+    /// it looks for — so absence proves nothing. Presence is worth a great
+    /// deal though: nothing gains by *inventing* evidence against itself, so a
+    /// positive here is an adverse admission and can be believed.
+    pub async fn root_artifacts(&self) -> AdbResult<Vec<String>> {
+        const PATHS: &[&str] = &[
+            "/sbin/su",
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/system/sbin/su",
+            "/vendor/bin/su",
+            "/su/bin/su",
+            "/data/local/tmp/su",
+            "/data/adb/magisk",
+            "/sbin/.magisk",
+            "/data/adb/ksu",
+        ];
+
+        // One round trip rather than ten: the shell tests each path and prints
+        // the ones that exist.
+        //
+        // The trailing `true` is load-bearing. `[ -e path ] && echo path`
+        // exits non-zero when the file is absent, so on a device with no root
+        // traces — the normal case — the last test would fail, adb would exit
+        // 1, and a clean result would be reported as a broken collector.
+        let script = format!(
+            "{}; true",
+            PATHS
+                .iter()
+                .map(|p| format!("[ -e {p} ] && echo {p}"))
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+
+        let out = self.shell_out(&script).await?;
+        Ok(out
+            .lines()
+            .map(str::trim)
+            .filter(|line| PATHS.contains(line))
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
     /// Verified Boot state **as the device reports it**.
     ///
     /// Callers must record this as [`ps_model::TrustBasis::SelfReported`]: root
@@ -329,6 +379,20 @@ mod tests {
             packages
                 .iter()
                 .any(|p| p.id == "com.work" && p.user_id == 10)
+        );
+    }
+
+    #[tokio::test]
+    async fn the_root_artifact_probe_ends_in_true_so_a_clean_device_is_not_an_error() {
+        // A device with no root traces makes the final test fail, which without
+        // the trailing `true` exits non-zero and looks like a broken collector.
+        let device = Device::new(FakeShell::new());
+        let error = device.root_artifacts().await.expect_err("unregistered");
+
+        let attempted = error.to_string();
+        assert!(
+            attempted.contains("; true"),
+            "the probe must end in `true`; got: {attempted}"
         );
     }
 

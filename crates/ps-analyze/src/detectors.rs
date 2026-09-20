@@ -65,6 +65,104 @@ pub fn analyse(obs: &Observations, indicators: &IndicatorSet) -> Vec<Finding> {
     findings.extend(notification_listeners(obs, indicators));
     findings.extend(install_provenance(obs));
     findings.extend(claimed_boot_state(obs));
+    findings.extend(system_integrity(obs));
+    findings
+}
+
+/// Signs that the system itself is not a stock, locked, vendor-signed build.
+///
+/// Every input here is self-reported, and so forgeable by exactly the
+/// privileged code it looks for. That makes it useless as reassurance and
+/// valuable as accusation: a compromised system gains nothing by inventing
+/// evidence against itself, so a positive result is an adverse admission and
+/// can be believed. Absence proves nothing, which is why this can raise tier-2
+/// coverage only to partial.
+fn system_integrity(obs: &Observations) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    if let Some(paths) = obs.root_artifacts.get()
+        && !paths.is_empty()
+    {
+        findings.extend(
+            FindingBuilder::new("system.root-artifacts", "The system carries traces of root")
+                .detail(format!(
+                    "Files that only exist on a rooted system are present: {}. Root means \
+                     any app that asks can read every other app's data, and that software \
+                     can survive a factory reset.",
+                    paths.join(", ")
+                ))
+                .severity(Severity::High)
+                .confidence(Confidence::Strong)
+                .tier(ThreatTier::PrivilegedPersistent)
+                .evidence(Evidence::new(
+                    SourceRef::new("adb/root-artifacts.txt"),
+                    TrustBasis::SelfReported,
+                    paths.join("\n"),
+                ))
+                .remediation("reflash-and-relock")
+                .build(),
+        );
+    }
+
+    let Some(properties) = obs.properties.get() else {
+        return findings;
+    };
+    let get = |key: &str| properties.get(key).map(String::as_str).unwrap_or_default();
+
+    // A shipped phone runs a `user` build signed with release keys. Anything
+    // else means the running system is not the one the vendor published.
+    let build_type = get("ro.build.type");
+    let build_tags = get("ro.build.tags");
+    if (!build_type.is_empty() && build_type != "user")
+        || (!build_tags.is_empty() && build_tags.contains("test-keys"))
+    {
+        findings.extend(
+            FindingBuilder::new(
+                "system.non-release-build",
+                "This is not a stock, vendor-signed build",
+            )
+            .detail(format!(
+                "The build reports type `{build_type}` and tags `{build_tags}`. A phone as \
+                 sold runs a `user` build with `release-keys`; anything else is a \
+                 development or custom image, on which the usual protections do not hold."
+            ))
+            .severity(Severity::High)
+            .confidence(Confidence::Strong)
+            .tier(ThreatTier::PrivilegedPersistent)
+            .evidence(Evidence::new(
+                SourceRef::new("adb/getprop.txt").at("ro.build.type"),
+                TrustBasis::SelfReported,
+                format!("ro.build.type={build_type}\nro.build.tags={build_tags}"),
+            ))
+            .remediation("reflash-and-relock")
+            .build(),
+        );
+    }
+
+    // An unlocked bootloader lets anything be flashed, so nothing below the
+    // operating system can be trusted afterwards.
+    if get("ro.boot.flash.locked") == "0" {
+        findings.extend(
+            FindingBuilder::new("system.bootloader-unlocked", "The bootloader is unlocked")
+                .detail(
+                    "An unlocked bootloader allows any system image to be installed, \
+                     including one carrying software that survives a factory reset. If you \
+                     did not unlock it yourself, treat the whole device as untrusted."
+                        .to_owned(),
+                )
+                .severity(Severity::High)
+                .confidence(Confidence::Strong)
+                .tier(ThreatTier::PrivilegedPersistent)
+                .evidence(Evidence::new(
+                    SourceRef::new("adb/getprop.txt").at("ro.boot.flash.locked"),
+                    TrustBasis::SelfReported,
+                    "ro.boot.flash.locked=0",
+                ))
+                .remediation("reflash-and-relock")
+                .build(),
+        );
+    }
+
     findings
 }
 
@@ -404,6 +502,36 @@ fn claimed_boot_state(obs: &Observations) -> Vec<Finding> {
     .collect()
 }
 
+/// Coverage for privileged, reset-surviving compromise.
+///
+/// Never better than partial without attestation, and the rationale has to say
+/// why rather than leaving the reader to assume the checks were conclusive:
+/// every input is self-reported, so it can accuse but it cannot exonerate.
+fn privileged_coverage(obs: &Observations) -> TierCoverage {
+    let checked = obs.properties.is_present() && obs.root_artifacts.is_present();
+
+    TierCoverage {
+        tier: ThreatTier::PrivilegedPersistent,
+        status: if checked {
+            CoverageStatus::Partial
+        } else {
+            CoverageStatus::NotCovered
+        },
+        rationale: if checked {
+            "Build type, signing keys, bootloader lock state and on-disk traces of root \
+             were checked. All of it is the device's own account of itself, so it can \
+             reveal tampering but cannot rule it out — a system with these privileges \
+             can rewrite every one of those answers. Settling this needs a hardware \
+             attestation certificate, which requires software running on the phone."
+                .to_owned()
+        } else {
+            "Build properties could not be read, and no hardware attestation certificate \
+             was collected."
+                .to_owned()
+        },
+    }
+}
+
 /// State what this run could and could not speak to, per adversary tier.
 ///
 /// This is the function that stops the tool from ever implying "clean".
@@ -442,14 +570,7 @@ pub fn coverage(obs: &Observations, indicators: &IndicatorSet) -> Vec<TierCovera
 
     vec![
         app_level,
-        TierCoverage {
-            tier: ThreatTier::PrivilegedPersistent,
-            status: CoverageStatus::NotCovered,
-            rationale: "No hardware attestation certificate was collected. The device's \
-                        own claim about Verified Boot cannot settle this, because \
-                        privileged code can rewrite that property."
-                .to_owned(),
-        },
+        privileged_coverage(obs),
         TierCoverage {
             tier: ThreatTier::RuntimeKernel,
             status: CoverageStatus::NotCovered,
@@ -510,6 +631,8 @@ mod tests {
             notification_listeners: Observed::Present(Vec::new()),
             device_admins: Observed::Present(Vec::new()),
             claimed_boot_state: Observed::Present(ps_model::BootState::Green),
+            properties: Observed::Present(std::collections::BTreeMap::new()),
+            root_artifacts: Observed::Present(Vec::new()),
         }
     }
 
