@@ -63,11 +63,13 @@ enum Command {
         json: Option<PathBuf>,
     },
 
-    /// Run the real pipeline against a fixture device, with no phone attached.
+    /// Development fixture: run the pipeline against a synthetic device.
     ///
-    /// Same collectors, detectors and report as `scan` — only the transport is
-    /// replaced. Useful for trying the tool out and for checking output
-    /// changes in review.
+    /// Hidden from `--help` on purpose. The fixtures exist to exercise the
+    /// detectors in CI and to check output changes in review; they are not a
+    /// product feature. A tool whose job is to tell you the truth about a
+    /// phone should not offer invented findings alongside real ones.
+    #[command(hide = true)]
     Demo {
         /// Which fixture device to examine.
         #[arg(value_enum, default_value_t = demo::Scenario::Compromised)]

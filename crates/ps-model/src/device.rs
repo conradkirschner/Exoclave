@@ -74,6 +74,88 @@ impl BootState {
     }
 }
 
+/// The state adb reports for an attached device.
+///
+/// "No device found" on its own is useless: the phone may be absent, on a
+/// charge-only cable, in charging mode, waiting on an unaccepted authorisation
+/// prompt, or held by another adb server. Each needs a different action, so
+/// the state carries its own instruction rather than leaving the interface to
+/// guess.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeviceState {
+    /// Connected and authorised. The only state that can be scanned.
+    Ready,
+    /// Visible, but the USB debugging prompt has not been accepted.
+    Unauthorized,
+    /// Enumerated but not responding — usually a half-woken USB link.
+    Offline,
+    /// In bootloader, recovery or sideload. Not scannable.
+    Unavailable(String),
+}
+
+impl DeviceState {
+    /// Whether a scan can run against a device in this state.
+    #[must_use]
+    pub const fn is_scannable(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    /// One line naming the state.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        match self {
+            Self::Ready => "Connected and authorised".to_owned(),
+            Self::Unauthorized => "Waiting for you to allow USB debugging".to_owned(),
+            Self::Offline => "Connected but not responding".to_owned(),
+            Self::Unavailable(mode) => format!("In {mode} mode"),
+        }
+    }
+
+    /// What the user should actually do next, if anything.
+    #[must_use]
+    pub const fn next_step(&self) -> Option<&'static str> {
+        match self {
+            Self::Ready => None,
+            Self::Unauthorized => Some(
+                "Unlock the phone and accept the \u{201c}Allow USB debugging?\u{201d} prompt, \
+                 ticking \u{201c}Always allow from this computer\u{201d}. If no prompt \
+                 appeared, unplug and replug the cable.",
+            ),
+            Self::Offline => Some(
+                "Unplug and replug the cable, then unlock the phone. If it stays offline, \
+                 turn USB debugging off and on again in Developer options.",
+            ),
+            Self::Unavailable(_) => Some(
+                "Boot the phone normally. Exoclave reads a running Android system and cannot \
+                 examine a device in recovery, sideload or bootloader mode.",
+            ),
+        }
+    }
+}
+
+/// One attached device, as adb reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceEntry {
+    pub serial: String,
+    pub state: DeviceState,
+    /// Absent while unauthorised: a device tells us nothing about itself until
+    /// it trusts this computer.
+    pub model: Option<String>,
+}
+
+impl DeviceEntry {
+    /// Best available human label.
+    #[must_use]
+    pub fn display_name(&self) -> String {
+        match &self.model {
+            // adb substitutes underscores for spaces in these fields.
+            Some(model) => model.replace('_', " "),
+            None => self.serial.clone(),
+        }
+    }
+}
+
 /// An installed package, as enumerated over ADB.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {

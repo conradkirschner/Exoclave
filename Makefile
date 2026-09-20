@@ -17,7 +17,7 @@ help:
 
 # No device required: the real detectors against a fixture.
 SCENARIO ?= compromised
-demo: build
+demo: build  # development fixture, not a product feature
 	docker run --rm $(IMAGE):latest demo $(SCENARIO)
 
 # Produces ./dist/exoclave.exe — run it natively against your own adb.

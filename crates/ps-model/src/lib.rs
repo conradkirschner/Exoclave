@@ -33,7 +33,7 @@ pub mod finding;
 pub mod report;
 pub mod trust;
 
-pub use device::{BootState, DeviceIdentity, Package};
+pub use device::{BootState, DeviceEntry, DeviceIdentity, DeviceState, Package};
 pub use finding::{Confidence, Evidence, Finding, FindingBuilder, Severity, SourceRef};
 pub use report::{CoverageStatus, FeedProvenance, Report, TierCoverage, Verdict};
 pub use trust::{ThreatTier, TrustBasis};

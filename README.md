@@ -84,12 +84,14 @@ git clone https://github.com/conradkirschner/Exoclave.git
 cd Exoclave
 make check          # fmt + clippy + tests, in the build image
 make build          # release image
-make demo           # see it work — no phone required
 ```
 
-`make demo` runs the **real** pipeline against a fixture device: the same
-collectors, detectors and coverage statement, with only the ADB transport
-replaced. `make demo SCENARIO=healthy` for the quiet case.
+There is deliberately **no demonstration mode in the application**. A tool
+whose purpose is to tell you the truth about a device should not put invented
+findings on screen next to real ones. Synthetic fixtures do exist — they
+exercise the whole pipeline in CI — but they live in the test suite and behind
+a hidden `exoclave demo` subcommand for development, where they cannot be
+mistaken for a result.
 
 ### Running it on Windows
 
@@ -162,8 +164,8 @@ CI with no phone attached — see `ps_adb::fake::FakeShell`.
 - [x] Domain model with trust provenance and honest coverage
 - [x] ADB acquisition and app-tier detection
 - [x] Reproducible Docker build chain
-- [x] Demo mode — the real pipeline against a fixture device, no phone needed
 - [x] Native desktop UI (`egui`/`eframe`), rendered and asserted on headlessly in CI
+- [x] Guided connection screen with live device status
 - [ ] Guided cleanup wizard in the UI
 - [ ] Hardware key attestation, verified host-side
 - [ ] Google Takeout parsing → per-app *safe to restore?* verdicts

@@ -2,29 +2,40 @@
 //!
 //! egui lays out and produces text shapes without a window, a GPU or a display
 //! server, so the interface can be rendered in CI and asserted on as text.
-//! These check the property the whole project rests on: that a report which
-//! found nothing still tells the user what went unexamined, and never claims
-//! the device is clean.
+//! These check the properties the project rests on: that the connect screen
+//! teaches rather than just failing, that a report which found nothing still
+//! says what went unexamined, and that the word *clean* never reaches the
+//! screen.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chrono::Utc;
 use egui::{Pos2, RawInput, Rect, Vec2, epaint::Shape};
-use ps_gui::{ExoclaveApp, Job, Launcher, ScanResult};
+use ps_gui::{Backend, ExoclaveApp, ProbeResult, ScanResult};
 use ps_model::{
-    Confidence, CoverageStatus, DeviceIdentity, Evidence, FindingBuilder, Report, Severity,
-    SourceRef, ThreatTier, TierCoverage, TrustBasis,
+    Confidence, CoverageStatus, DeviceEntry, DeviceIdentity, DeviceState, Evidence, FindingBuilder,
+    Report, Severity, SourceRef, ThreatTier, TierCoverage, TrustBasis,
 };
 use std::sync::mpsc::{self, Receiver};
 
-struct Instant(ScanResult);
+struct Fake {
+    scan: ScanResult,
+    probe: ProbeResult,
+}
 
-impl Launcher for Instant {
-    fn launch(&self, _job: Job) -> Receiver<ScanResult> {
-        let (tx, rx) = mpsc::channel();
-        let _ = tx.send(self.0.clone());
-        rx
+impl Backend for Fake {
+    fn scan(&self, _serial: String) -> Receiver<ScanResult> {
+        ready(self.scan.clone())
     }
+    fn probe(&self) -> Receiver<ProbeResult> {
+        ready(self.probe.clone())
+    }
+}
+
+fn ready<T: Send + 'static>(value: T) -> Receiver<T> {
+    let (tx, rx) = mpsc::channel();
+    let _ = tx.send(value);
+    rx
 }
 
 /// Render two frames and return every string that reached the screen.
@@ -68,12 +79,20 @@ fn collect(shape: &Shape, out: &mut String) {
     }
 }
 
+fn entry(state: DeviceState) -> DeviceEntry {
+    DeviceEntry {
+        serial: "1234ABCD".to_owned(),
+        state,
+        model: Some("Mi_11".to_owned()),
+    }
+}
+
 fn quiet_report() -> Report {
     let mut report = Report::new(
         DeviceIdentity {
             serial: "TEST".into(),
-            manufacturer: Some("Google".into()),
-            model: Some("Pixel 8".into()),
+            manufacturer: Some("Xiaomi".into()),
+            model: Some("Mi 11".into()),
             security_patch: Some("2026-08-01".into()),
             ..DeviceIdentity::default()
         },
@@ -113,21 +132,102 @@ fn alarming_report() -> Report {
     report
 }
 
+fn app_with(probe: ProbeResult, scan: ScanResult) -> ExoclaveApp {
+    ExoclaveApp::new(Box::new(Fake { scan, probe }))
+}
+
 fn app_showing(report: Report) -> ExoclaveApp {
-    let mut app = ExoclaveApp::new(Box::new(Instant(Ok(report))));
-    app.start(Job::DemoHealthy);
-    assert!(app.poll());
+    let mut app = app_with(Ok(vec![entry(DeviceState::Ready)]), Ok(report));
+    app.request_probe();
+    app.poll();
+    app.start_scan("1234ABCD".to_owned());
+    app.poll();
     app
 }
 
 #[test]
-fn the_idle_screen_explains_what_to_do() {
-    let mut app = ExoclaveApp::new(Box::new(Instant(Ok(quiet_report()))));
+fn the_connect_screen_teaches_the_usb_debugging_steps() {
+    let mut app = app_with(Ok(vec![]), Ok(quiet_report()));
     let text = rendered_text(&mut app);
 
     assert!(text.contains("EXOCLAVE"), "got: {text}");
-    assert!(text.contains("Nothing examined yet"), "got: {text}");
-    assert!(text.contains("Scan connected device"), "got: {text}");
+    assert!(text.contains("USB debugging"), "got: {text}");
+    assert!(text.contains("Developer options"), "got: {text}");
+    assert!(text.contains("Build number"), "got: {text}");
+}
+
+#[test]
+fn the_connect_screen_names_the_xiaomi_path_because_it_differs() {
+    let mut app = app_with(Ok(vec![]), Ok(quiet_report()));
+    let text = rendered_text(&mut app);
+
+    assert!(text.contains("MIUI"), "got: {text}");
+    assert!(text.contains("Additional settings"), "got: {text}");
+}
+
+#[test]
+fn a_charge_only_cable_is_offered_as_an_explanation_for_seeing_nothing() {
+    let mut app = app_with(Ok(vec![]), Ok(quiet_report()));
+    let text = rendered_text(&mut app);
+
+    assert!(text.contains("No phone detected"), "got: {text}");
+    assert!(
+        text.contains("cable") && text.contains("data"),
+        "a cable with no data wires is the most common cause; got: {text}"
+    );
+}
+
+#[test]
+fn an_unauthorised_phone_is_shown_with_the_action_that_fixes_it() {
+    let mut app = app_with(
+        Ok(vec![entry(DeviceState::Unauthorized)]),
+        Ok(quiet_report()),
+    );
+    let text = rendered_text(&mut app);
+
+    assert!(text.contains("Mi 11"), "got: {text}");
+    assert!(text.contains("Allow USB debugging"), "got: {text}");
+    assert!(
+        !text.contains("Examine this phone"),
+        "an unauthorised phone must not offer a scan; got: {text}"
+    );
+}
+
+#[test]
+fn a_ready_phone_offers_the_scan() {
+    let mut app = app_with(Ok(vec![entry(DeviceState::Ready)]), Ok(quiet_report()));
+    let text = rendered_text(&mut app);
+
+    assert!(text.contains("Connected and authorised"), "got: {text}");
+    assert!(text.contains("Examine this phone"), "got: {text}");
+}
+
+#[test]
+fn a_missing_adb_is_explained_rather_than_shown_as_a_raw_error() {
+    let mut app = app_with(
+        Err("could not run `adb`: program not found".to_owned()),
+        Ok(quiet_report()),
+    );
+    let text = rendered_text(&mut app);
+
+    assert!(text.contains("Could not ask adb"), "got: {text}");
+    assert!(text.contains("platform-tools"), "got: {text}");
+}
+
+#[test]
+fn nothing_in_the_interface_offers_demonstration_or_sample_data() {
+    for probe in [
+        Ok(vec![]),
+        Ok(vec![entry(DeviceState::Ready)]),
+        Ok(vec![entry(DeviceState::Unauthorized)]),
+    ] {
+        let mut app = app_with(probe, Ok(quiet_report()));
+        let text = rendered_text(&mut app).to_lowercase();
+
+        for forbidden in ["demo", "sample", "example device", "mock"] {
+            assert!(!text.contains(forbidden), "found {forbidden:?} in: {text}");
+        }
+    }
 }
 
 #[test]
@@ -177,14 +277,18 @@ fn a_serious_finding_is_expanded_by_default_with_its_caveat_visible() {
 }
 
 #[test]
-fn a_failed_scan_shows_the_reason() {
-    let mut app = ExoclaveApp::new(Box::new(Instant(Err(
-        "no device is connected, or it has not authorised this computer".into(),
-    ))));
-    app.start(Job::ScanDevice);
+fn a_failed_scan_shows_the_reason_and_a_way_back() {
+    let mut app = app_with(
+        Ok(vec![entry(DeviceState::Ready)]),
+        Err("device is unauthorised: accept the USB debugging prompt on the phone".to_owned()),
+    );
+    app.request_probe();
+    app.poll();
+    app.start_scan("1234ABCD".to_owned());
     app.poll();
 
     let text = rendered_text(&mut app);
     assert!(text.contains("did not complete"), "got: {text}");
-    assert!(text.contains("no device is connected"), "got: {text}");
+    assert!(text.contains("unauthorised"), "got: {text}");
+    assert!(text.contains("Back"), "got: {text}");
 }

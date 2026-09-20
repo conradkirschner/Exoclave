@@ -16,6 +16,7 @@
 //! crate talks to the ADB server running on the host instead, which needs no
 //! USB passthrough.
 
+pub mod devices;
 pub mod fake;
 pub mod parse;
 
