@@ -214,9 +214,10 @@ fn instructions(ui: &mut Ui) {
         (
             "Turn on USB debugging",
             "Settings \u{2192} Developer options \u{2192} USB debugging. On Xiaomi, \
-             Developer options sits under Additional settings. You do not need \
-             \u{201c}USB debugging (Security settings)\u{201d} \u{2014} that one wants a \
-             Mi account, and Exoclave only reads.",
+             Developer options sits under Additional settings. Examining the phone needs \
+             nothing more. Changing a setting on it \u{2014} cleanup, or routing its \
+             traffic \u{2014} additionally needs \u{201c}USB debugging (Security \
+             settings)\u{201d}, which Xiaomi gates behind a signed-in Mi account.",
         ),
         (
             "Connect by USB and unlock the screen",
@@ -360,10 +361,114 @@ fn report_screen(ui: &mut Ui, report: &Report) -> Option<Action> {
             ui.add_space(theme::GAP_L);
             findings(ui, report);
             ui.add_space(theme::GAP_L);
+            cleanup(ui, report);
+            ui.add_space(theme::GAP_L);
             feeds(ui, report);
         });
 
     action
+}
+
+/// What to do about what was found.
+fn cleanup(ui: &mut Ui, report: &Report) {
+    let dark = ui.visuals().dark_mode;
+    let plan = ps_remediate::from_report(report);
+
+    if plan.steps.is_empty() && plan.warnings.is_empty() {
+        return;
+    }
+
+    ui.label(RichText::new("Cleanup").size(14.0).strong());
+    ui.add_space(theme::GAP_S);
+
+    for warning in &plan.warnings {
+        ui.label(
+            RichText::new(warning)
+                .size(12.0)
+                .color(theme::severity_colour(ps_model::Severity::Medium, dark)),
+        );
+        ui.add_space(theme::GAP_S);
+    }
+
+    let automatic = plan.automatic();
+    if !automatic.is_empty() {
+        ui.add_space(theme::GAP_S);
+        ui.label(
+            RichText::new("Exoclave can do these, in this order")
+                .size(13.0)
+                .strong(),
+        );
+        ui.label(
+            RichText::new(
+                "Ordering matters: capability is cut first, and device administrator \
+                 rights have to go before an app can be removed at all.",
+            )
+            .size(11.0)
+            .color(theme::muted(dark)),
+        );
+        ui.add_space(theme::GAP_S);
+
+        for (index, step) in automatic.iter().enumerate() {
+            ui.push_id(("auto", index), |ui| {
+                egui::CollapsingHeader::new(RichText::new(&step.title).strong())
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(&step.why).size(12.0));
+                        if let Some(reversibility) = step.reversibility() {
+                            ui.label(
+                                RichText::new(format!("This {}.", reversibility.describes()))
+                                    .size(11.0)
+                                    .color(theme::muted(dark)),
+                            );
+                        }
+                        if let Some(caution) = &step.caution {
+                            ui.label(
+                                RichText::new(caution)
+                                    .size(11.0)
+                                    .italics()
+                                    .color(theme::muted(dark)),
+                            );
+                        }
+                    });
+            });
+        }
+
+        ui.add_space(theme::GAP_S);
+        ui.label(
+            RichText::new(
+                "Carrying these out from the interface is not wired up yet, so for now \
+                 they are a checklist rather than buttons.",
+            )
+            .size(11.0)
+            .italics()
+            .color(theme::muted(dark)),
+        );
+    }
+
+    let manual = plan.manual();
+    if !manual.is_empty() {
+        ui.add_space(theme::GAP_M);
+        ui.label(RichText::new("Only you can do these").size(13.0).strong());
+        ui.add_space(theme::GAP_S);
+
+        for (index, step) in manual.iter().enumerate() {
+            ui.push_id(("manual", index), |ui| {
+                egui::CollapsingHeader::new(RichText::new(&step.title).strong())
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(&step.why).size(12.0));
+                        ui.add_space(theme::GAP_S);
+                        if let ps_remediate::Action::Manual { instructions } = &step.action {
+                            for instruction in instructions {
+                                ui.label(
+                                    RichText::new(format!("\u{2022} {instruction}")).size(12.0),
+                                );
+                            }
+                        }
+                    });
+            });
+        }
+    }
 }
 
 fn verdict(ui: &mut Ui, report: &Report) {

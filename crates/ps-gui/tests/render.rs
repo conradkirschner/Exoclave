@@ -246,9 +246,22 @@ fn the_interface_never_tells_the_user_the_device_is_clean() {
         let mut app = app_showing(report);
         let text = rendered_text(&mut app).to_lowercase();
 
-        assert!(!text.contains("clean"), "got: {text}");
-        assert!(!text.contains("no threats"), "got: {text}");
-        assert!(!text.contains("you are safe"), "got: {text}");
+        // Checked as phrases rather than the bare word: the cleanup section is
+        // legitimately headed "Cleanup", and a substring match on "clean"
+        // would forbid the tool from offering to clean anything.
+        for reassurance in [
+            "is clean",
+            "looks clean",
+            "device is safe",
+            "no threats",
+            "you are safe",
+            "nothing to worry",
+        ] {
+            assert!(
+                !text.contains(reassurance),
+                "found {reassurance:?} in: {text}"
+            );
+        }
     }
 }
 

@@ -31,6 +31,9 @@ desktop = [
 # Pure Rust, no system dependencies — so the UI is testable anywhere.
 egui = "0.36"
 ps-model.workspace = true
+# Planning is pure: building a plan touches no device, so the cleanup section
+# renders in the headless tests like everything else.
+ps-remediate = { path = "../ps-remediate" }
 
 # Only the windowing shell and the scan runner need these.
 eframe = { version = "0.36", default-features = false, features = [

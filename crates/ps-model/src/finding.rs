@@ -129,6 +129,55 @@ impl Evidence {
     }
 }
 
+/// The concrete thing a finding is about.
+///
+/// Findings carry prose for the reader, but cleanup needs an unambiguous
+/// target. Parsing the package name back out of a sentence would be fragile
+/// and, since the result is fed to `pm uninstall`, dangerous — so the subject
+/// is structured from the start.
+///
+/// A finding with no subject describes a condition rather than a thing, and so
+/// can never produce an automatic action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum Subject {
+    /// An installed application.
+    Package { id: String, user_id: u32 },
+    /// A component within an application — a service or a receiver.
+    Component {
+        package: String,
+        class: String,
+        user_id: u32,
+    },
+}
+
+impl Subject {
+    /// The owning package, whichever shape the subject takes.
+    #[must_use]
+    pub fn package(&self) -> &str {
+        match self {
+            Self::Package { id, .. } => id,
+            Self::Component { package, .. } => package,
+        }
+    }
+
+    #[must_use]
+    pub const fn user_id(&self) -> u32 {
+        match self {
+            Self::Package { user_id, .. } | Self::Component { user_id, .. } => *user_id,
+        }
+    }
+
+    /// `package/class` for a component, bare package otherwise.
+    #[must_use]
+    pub fn component_name(&self) -> Option<String> {
+        match self {
+            Self::Package { .. } => None,
+            Self::Component { package, class, .. } => Some(format!("{package}/{class}")),
+        }
+    }
+}
+
 /// A single conclusion from one analysis module.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finding {
@@ -148,6 +197,9 @@ pub struct Finding {
     /// Identifier of the remediation step that addresses it, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remediation: Option<String>,
+    /// The concrete thing this finding is about, when there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<Subject>,
 }
 
 impl Finding {
@@ -182,6 +234,7 @@ pub struct FindingBuilder {
     tier: ThreatTier,
     evidence: Vec<Evidence>,
     remediation: Option<String>,
+    subject: Option<Subject>,
 }
 
 impl FindingBuilder {
@@ -195,6 +248,7 @@ impl FindingBuilder {
             tier: ThreatTier::AppLevel,
             evidence: Vec::new(),
             remediation: None,
+            subject: None,
         }
     }
 
@@ -234,6 +288,13 @@ impl FindingBuilder {
         self
     }
 
+    /// Name the concrete thing this finding is about, so cleanup can act on it.
+    #[must_use]
+    pub fn subject(mut self, subject: Subject) -> Self {
+        self.subject = Some(subject);
+        self
+    }
+
     /// Finalise. `None` if no evidence was attached: a finding without evidence
     /// is an opinion, and this tool does not ship opinions.
     #[must_use]
@@ -250,6 +311,7 @@ impl FindingBuilder {
             tier: self.tier,
             evidence: self.evidence,
             remediation: self.remediation,
+            subject: self.subject,
         })
     }
 }

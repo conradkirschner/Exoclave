@@ -1905,6 +1905,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ps-remediate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "ps-adb",
+ "ps-model",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ps-tunnel"
 version = "0.1.0"
 dependencies = [

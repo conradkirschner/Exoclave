@@ -1,0 +1,22 @@
+[package]
+name = "ps-remediate"
+description = "Planning and carrying out cleanup, with the safety rules that make it survivable."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ps-model.workspace = true
+ps-adb.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+chrono.workspace = true
+
+[lints]
+workspace = true

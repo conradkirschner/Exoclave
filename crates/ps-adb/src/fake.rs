@@ -19,7 +19,10 @@ use std::future::Future;
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct FakeShell {
-    responses: BTreeMap<String, String>,
+    responses: BTreeMap<String, Vec<String>>,
+    /// Per-command call counter, so a sequence can advance. Shared across
+    /// clones deliberately: a clone is the same fake device, not a fresh one.
+    calls: std::sync::Arc<std::sync::Mutex<BTreeMap<String, usize>>>,
 }
 
 impl FakeShell {
@@ -29,10 +32,29 @@ impl FakeShell {
     }
 
     /// Register output for one invocation. `args` is the space-joined argument
-    /// vector, e.g. `"shell pm list users"`.
+    /// vector, e.g. `"shell pm list users"`. The same output is returned every
+    /// time the command runs.
     #[must_use]
     pub fn with(mut self, args: &str, output: &str) -> Self {
-        self.responses.insert(args.to_owned(), output.to_owned());
+        self.responses
+            .insert(args.to_owned(), vec![output.to_owned()]);
+        self
+    }
+
+    /// Register a sequence of outputs for repeated calls to one command, the
+    /// last repeating once exhausted.
+    ///
+    /// Needed for read-modify-verify flows, which are the whole shape of
+    /// cleanup: read the current value, write a new one, then read again to
+    /// confirm it took. A fake that answered identically both times could not
+    /// tell a successful change from one that silently did nothing — which is
+    /// precisely the failure this tool has to catch.
+    #[must_use]
+    pub fn with_sequence(mut self, args: &str, outputs: &[&str]) -> Self {
+        self.responses.insert(
+            args.to_owned(),
+            outputs.iter().map(|s| (*s).to_owned()).collect(),
+        );
         self
     }
 
@@ -48,18 +70,31 @@ impl Shell for FakeShell {
     // an async function that never yields.
     fn exec(&self, args: Vec<String>) -> impl Future<Output = AdbResult<String>> + Send {
         let key = args.join(" ");
-        let result = self
-            .responses
-            .get(&key)
-            .cloned()
-            .ok_or_else(|| AdbError::CommandFailed {
-                status: 127,
-                stderr: format!(
-                    "FakeShell has no response registered for `{key}`; registered: {:?}",
-                    self.registered()
-                ),
-            });
-        std::future::ready(result)
+
+        let result = match self.responses.get(&key) {
+            Some(outputs) => {
+                let mut calls = match self.calls.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                let seen = calls.entry(key.clone()).or_insert(0);
+                // Past the end of the sequence, the last answer repeats.
+                let index = (*seen).min(outputs.len().saturating_sub(1));
+                *seen += 1;
+                outputs.get(index).cloned().unwrap_or_default()
+            }
+            None => {
+                return std::future::ready(Err(AdbError::CommandFailed {
+                    status: 127,
+                    stderr: format!(
+                        "FakeShell has no response registered for `{key}`; registered: {:?}",
+                        self.registered()
+                    ),
+                }));
+            }
+        };
+
+        std::future::ready(Ok(result))
     }
 }
 

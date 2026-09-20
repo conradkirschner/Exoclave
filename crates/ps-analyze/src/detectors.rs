@@ -116,6 +116,10 @@ fn matched_indicators(obs: &Observations, indicators: &IndicatorSet) -> Vec<Find
                         .unwrap_or_else(|| package.id.clone()),
                 ))
                 .remediation("remove-malicious-app")
+                .subject(ps_model::Subject::Package {
+                    id: package.id.clone(),
+                    user_id: package.user_id,
+                })
                 .build()
         })
         .collect()
@@ -272,6 +276,13 @@ fn component_findings(
                 component.to_string(),
             ))
             .remediation(kind.remediation)
+            // Secure settings are read for the primary user, so that is the
+            // profile any revocation has to target.
+            .subject(ps_model::Subject::Component {
+                package: component.package.clone(),
+                class: component.class.clone(),
+                user_id: 0,
+            })
             .build()
         })
         .collect()
