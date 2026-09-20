@@ -1,0 +1,8 @@
+# The build chain runs in Linux containers; CRLF in a Dockerfile or shell
+# script breaks it. Normalise everything to LF in the working tree too.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pcap binary
+*.pcapng binary
