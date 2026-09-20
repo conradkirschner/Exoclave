@@ -1,0 +1,50 @@
+[package]
+name = "ps-gui"
+description = "Native desktop interface for exoclave."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "exoclave-gui"
+path = "src/bin/exoclave-gui.rs"
+# The windowing shell needs a display stack; the library half does not. Keeping
+# the binary behind a feature means `cargo test --workspace` builds and exercises
+# all the UI code on a headless Linux box with no X11 or GPU present.
+required-features = ["desktop"]
+
+[features]
+default = []
+desktop = [
+    "dep:eframe",
+    "dep:ps-adb",
+    "dep:ps-analyze",
+    "dep:tokio",
+    "dep:anyhow",
+    "dep:chrono",
+]
+
+[dependencies]
+# Pure Rust, no system dependencies — so the UI is testable anywhere.
+egui = "0.36"
+ps-model.workspace = true
+
+# Only the windowing shell and the scan runner need these.
+eframe = { version = "0.36", default-features = false, features = [
+    "default_fonts",
+    "glow",
+], optional = true }
+ps-adb = { workspace = true, optional = true }
+ps-analyze = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+
+[dev-dependencies]
+chrono.workspace = true
+
+[lints]
+workspace = true

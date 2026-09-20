@@ -65,14 +65,17 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     rustup target add x86_64-pc-windows-gnu \
- && cargo build --release --target x86_64-pc-windows-gnu -p ps-cli \
+ && cargo build --release --target x86_64-pc-windows-gnu \
+      -p ps-cli -p ps-gui --features ps-gui/desktop \
  && mkdir -p /out \
- && cp target/x86_64-pc-windows-gnu/release/exoclave.exe /out/exoclave.exe
+ && cp target/x86_64-pc-windows-gnu/release/exoclave.exe /out/exoclave.exe \
+ && cp target/x86_64-pc-windows-gnu/release/exoclave-gui.exe /out/exoclave-gui.exe
 
 # Export-only stage: `docker build --target windows -o type=local,dest=dist`
-# drops exoclave.exe into ./dist with no image left behind.
+# drops both binaries into ./dist with no image left behind.
 FROM scratch AS windows
 COPY --from=windows-builder /out/exoclave.exe /exoclave.exe
+COPY --from=windows-builder /out/exoclave-gui.exe /exoclave-gui.exe
 
 # ---------------------------------------------------------------- runtime ----
 FROM alpine:3.21 AS runtime

@@ -11,6 +11,7 @@
 //! requires evidence the device cannot edit: a hardware attestation
 //! certificate, or traffic observed on our own access point.
 
+pub mod demo;
 pub mod detectors;
 pub mod indicators;
 pub mod observations;

@@ -97,7 +97,8 @@ A Linux container cannot claim a USB device on Windows, so the easiest path is
 a native binary, cross-compiled from the same Docker chain:
 
 ```bash
-make windows        # produces dist/exoclave.exe
+make windows              # produces dist/exoclave.exe and dist/exoclave-gui.exe
+dist\exoclave-gui.exe     # the desktop interface
 dist\exoclave.exe demo compromised
 dist\exoclave.exe scan --feed feeds/example.json
 ```
@@ -130,7 +131,7 @@ crates/
   ps-adb        typed ADB access; parsers separated from I/O and unit-tested
   ps-analyze    detection modules, indicator feeds, coverage statement
   ps-cli        terminal front end
-  ps-gui        native desktop UI (planned)
+  ps-gui        native desktop UI; the library half is pure egui and headlessly tested
 docker/         the entire build chain
 docs/           threat model and research notes
 feeds/          indicator feed format, with an example
@@ -138,16 +139,20 @@ feeds/          indicator feed format, with an example
 
 ### On the UI
 
-The desktop UI will be **native Rust — `egui`/`eframe`** — not a webview. That
-keeps Exoclave a single self-contained binary with no browser, no bundled
-runtime and no localhost server, cross-compiled from the same Docker chain that
-produces everything else. `egui` is MIT/Apache-2.0, which fits this project's
-licence.
+The desktop UI is **native Rust — `egui`/`eframe`** — not a webview. Exoclave
+stays a single self-contained binary: no browser, no bundled runtime, no
+localhost server, cross-compiled from the same Docker chain as everything else.
+`egui` is MIT/Apache-2.0, which fits this project's licence.
 
-`Report` is already a plain serialisable value with the rendering kept separate
-(`ps-cli/src/render.rs`), so the GUI consumes the same analysis output the CLI
-does rather than reimplementing it. Terminal output stays a first-class, fully
-scriptable path.
+`ps-gui` is split so that the interface is testable. The library half depends
+only on `egui` and `ps-model`, both pure Rust; the windowing shell and the code
+that talks to a device sit behind a `desktop` feature. So CI renders every
+screen with no display server, no GPU and no phone, and asserts on the text
+that actually reached the screen — including that a report which found nothing
+still shows `NOT CHECKED`, and that the word *clean* never appears.
+
+Terminal output stays a first-class, fully scriptable path; both front ends
+consume the same `Report`.
 
 Detection runs against replayed fixtures, so the whole pipeline is exercised in
 CI with no phone attached — see `ps_adb::fake::FakeShell`.
@@ -158,7 +163,8 @@ CI with no phone attached — see `ps_adb::fake::FakeShell`.
 - [x] ADB acquisition and app-tier detection
 - [x] Reproducible Docker build chain
 - [x] Demo mode — the real pipeline against a fixture device, no phone needed
-- [ ] Native desktop UI (`egui`/`eframe`) with a guided cleanup wizard
+- [x] Native desktop UI (`egui`/`eframe`), rendered and asserted on headlessly in CI
+- [ ] Guided cleanup wizard in the UI
 - [ ] Hardware key attestation, verified host-side
 - [ ] Google Takeout parsing → per-app *safe to restore?* verdicts
 - [ ] Out-of-band capture: isolated Wi-Fi hotspot, own DNS resolver, TLS/QUIC SNI
