@@ -84,11 +84,29 @@ git clone https://github.com/conradkirschner/Exoclave.git
 cd Exoclave
 make check          # fmt + clippy + tests, in the build image
 make build          # release image
+make demo           # see it work — no phone required
 ```
 
-Scanning a device. A Linux container cannot claim a USB device on Windows or
-macOS, so Exoclave talks to an adb **server** on the host — no USB passthrough,
-no extra privileges:
+`make demo` runs the **real** pipeline against a fixture device: the same
+collectors, detectors and coverage statement, with only the ADB transport
+replaced. `make demo SCENARIO=healthy` for the quiet case.
+
+### Running it on Windows
+
+A Linux container cannot claim a USB device on Windows, so the easiest path is
+a native binary, cross-compiled from the same Docker chain:
+
+```bash
+make windows        # produces dist/exoclave.exe
+dist\exoclave.exe demo compromised
+dist\exoclave.exe scan --feed feeds/example.json
+```
+
+It uses whatever `adb` is on your `PATH`, so nothing else needs configuring.
+
+Scanning a device from inside the container instead: Exoclave talks to an adb
+**server** on the host, so no USB passthrough and no extra privileges are
+needed.
 
 ```bash
 # on the host, once
@@ -98,7 +116,7 @@ adb -a -P 5037 nodaemon server
 make run ARGS="scan --feed /feeds/example.json --json /work/report.json"
 ```
 
-Or natively, if you do have a Rust toolchain:
+Or straight from cargo, if you have a Rust toolchain:
 
 ```bash
 cargo run -p ps-cli -- scan --feed feeds/example.json
@@ -112,10 +130,24 @@ crates/
   ps-adb        typed ADB access; parsers separated from I/O and unit-tested
   ps-analyze    detection modules, indicator feeds, coverage statement
   ps-cli        terminal front end
+  ps-gui        native desktop UI (planned)
 docker/         the entire build chain
 docs/           threat model and research notes
 feeds/          indicator feed format, with an example
 ```
+
+### On the UI
+
+The desktop UI will be **native Rust — `egui`/`eframe`** — not a webview. That
+keeps Exoclave a single self-contained binary with no browser, no bundled
+runtime and no localhost server, cross-compiled from the same Docker chain that
+produces everything else. `egui` is MIT/Apache-2.0, which fits this project's
+licence.
+
+`Report` is already a plain serialisable value with the rendering kept separate
+(`ps-cli/src/render.rs`), so the GUI consumes the same analysis output the CLI
+does rather than reimplementing it. Terminal output stays a first-class, fully
+scriptable path.
 
 Detection runs against replayed fixtures, so the whole pipeline is exercised in
 CI with no phone attached — see `ps_adb::fake::FakeShell`.
@@ -125,7 +157,8 @@ CI with no phone attached — see `ps_adb::fake::FakeShell`.
 - [x] Domain model with trust provenance and honest coverage
 - [x] ADB acquisition and app-tier detection
 - [x] Reproducible Docker build chain
-- [ ] Web UI (axum + browser) with a guided cleanup wizard
+- [x] Demo mode — the real pipeline against a fixture device, no phone needed
+- [ ] Native desktop UI (`egui`/`eframe`) with a guided cleanup wizard
 - [ ] Hardware key attestation, verified host-side
 - [ ] Google Takeout parsing → per-app *safe to restore?* verdicts
 - [ ] Out-of-band capture: isolated Wi-Fi hotspot, own DNS resolver, TLS/QUIC SNI

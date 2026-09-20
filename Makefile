@@ -4,14 +4,26 @@
 IMAGE ?= exoclave
 DOCKERFILE := docker/Dockerfile
 
-.PHONY: help build check test fmt lint shell run clean
+.PHONY: help build check test demo windows shell run clean
 
 help:
 	@echo "build   - build the release image ($(IMAGE))"
 	@echo "check   - fmt + clippy + tests, in the build image"
+	@echo "demo    - run the pipeline against a fixture device, no phone needed"
+	@echo "windows - cross-compile dist/exoclave.exe for Windows"
 	@echo "shell   - interactive shell in the build environment"
 	@echo "run     - run the CLI (ARGS=\"scan --help\")"
 	@echo "clean   - remove build cache and images"
+
+# No device required: the real detectors against a fixture.
+SCENARIO ?= compromised
+demo: build
+	docker run --rm $(IMAGE):latest demo $(SCENARIO)
+
+# Produces ./dist/exoclave.exe — run it natively against your own adb.
+windows:
+	docker build -f $(DOCKERFILE) --target windows -o type=local,dest=dist .
+	@echo "built: dist/exoclave.exe"
 
 build:
 	docker build -f $(DOCKERFILE) --target runtime -t $(IMAGE):latest .

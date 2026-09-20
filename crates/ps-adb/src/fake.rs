@@ -63,6 +63,91 @@ impl Shell for FakeShell {
     }
 }
 
+/// Ready-made devices, for the demo mode and for cross-crate tests.
+///
+/// The output below is shaped like real `adb` output — including the awkward
+/// parts, such as `=` inside APK paths and a work profile holding packages the
+/// main user never sees. Package names are deliberately synthetic
+/// (`com.demo.*`): these are illustrations, not indicators.
+pub mod scenarios {
+    use super::FakeShell;
+
+    const GETPROP: &str = "[ro.product.manufacturer]: [Google]\n\
+                           [ro.product.model]: [Pixel 8]\n\
+                           [ro.build.version.release]: [16]\n\
+                           [ro.build.version.sdk]: [36]\n\
+                           [ro.build.version.security_patch]: [2026-08-01]\n\
+                           [ro.build.fingerprint]: [google/shiba/shiba:16/BP3A.250805.014/13421211:user/release-keys]\n";
+
+    /// A device with nothing wrong with it at app level.
+    #[must_use]
+    pub fn healthy() -> FakeShell {
+        FakeShell::new()
+            .with("shell getprop", GETPROP)
+            .with("shell pm list users", "Users:\n\tUserInfo{0:Owner:c13} running\n")
+            .with(
+                "shell pm list packages -f -i -u --user 0",
+                "package:/data/app/~~7Hq2==/com.android.chrome-Kd91==/base.apk=com.android.chrome  installer=com.android.vending\n\
+                 package:/data/app/~~bB4z==/com.spotify.music-Pl32==/base.apk=com.spotify.music  installer=com.android.vending\n\
+                 package:/data/app/~~mN8x==/com.x8bit.bitwarden-Qw77==/base.apk=com.x8bit.bitwarden  installer=com.android.vending\n",
+            )
+            .with(
+                "shell settings get secure enabled_accessibility_services",
+                "com.google.android.marvin.talkback/.TalkBackService\n",
+            )
+            .with(
+                "shell settings get secure enabled_notification_listeners",
+                "null\n",
+            )
+            .with("shell dumpsys device_policy", "Current Device Policy Manager state:\n")
+            .with("shell getprop ro.boot.verifiedbootstate", "green\n")
+    }
+
+    /// A device showing the full range of app-tier problems: a known indicator
+    /// hiding in a work profile, an unrecognised accessibility service, a
+    /// device administrator resisting uninstall, notification access, sideloaded
+    /// packages, and a bootloader that is no longer locked.
+    #[must_use]
+    pub fn compromised() -> FakeShell {
+        FakeShell::new()
+            .with("shell getprop", GETPROP)
+            .with(
+                "shell pm list users",
+                "Users:\n\tUserInfo{0:Owner:c13} running\n\tUserInfo{10:Work profile:1030} running\n",
+            )
+            .with(
+                "shell pm list packages -f -i -u --user 0",
+                "package:/data/app/~~7Hq2==/com.android.chrome-Kd91==/base.apk=com.android.chrome  installer=com.android.vending\n\
+                 package:/data/app/~~zX1p==/com.demo.batterysaver-Rt44==/base.apk=com.demo.batterysaver  installer=com.demo.filemanager\n\
+                 package:/data/app/~~kK9w==/com.demo.filemanager-Yu21==/base.apk=com.demo.filemanager  installer=null\n\
+                 package:/data/app/~~qQ3e==/com.demo.pdfreader-Zz09==/base.apk=com.demo.pdfreader  installer=null\n",
+            )
+            .with(
+                "shell pm list packages -f -i -u --user 10",
+                "package:/data/app/~~vV5t==/com.demo.trackerpro-Ab12==/base.apk=com.demo.trackerpro  installer=null\n",
+            )
+            .with(
+                "shell settings get secure enabled_accessibility_services",
+                "com.demo.trackerpro/.MonitorService:com.demo.batterysaver/.OptimiserService\n",
+            )
+            .with(
+                "shell settings get secure enabled_notification_listeners",
+                "com.demo.batterysaver/.NotificationCollector\n",
+            )
+            .with(
+                "shell dumpsys device_policy",
+                "Current Device Policy Manager state:\n  \
+                 Device Admin:\n    \
+                 admin=ComponentInfo{com.demo.trackerpro/com.demo.trackerpro.AdminReceiver}\n      \
+                 uid=10287\n      \
+                 policies:\n        \
+                 limit-password\n        \
+                 wipe-data\n",
+            )
+            .with("shell getprop ro.boot.verifiedbootstate", "orange\n")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]

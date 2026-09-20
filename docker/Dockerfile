@@ -43,6 +43,37 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
  && cargo clippy --workspace --all-targets -- -D warnings \
  && cargo test --workspace
 
+# --------------------------------------------------------- windows binary ----
+# Cross-compiles a native exoclave.exe. On Windows the usual reason to want
+# this is that a Linux container cannot claim a USB device, so running on the
+# host is simpler than wiring up an adb server over TCP.
+FROM rust:${RUST_VERSION}-slim-bookworm AS windows-builder
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends mingw-w64 \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+
+WORKDIR /src
+COPY . .
+
+# `rustup target add` must run *after* the source is in place. rust-toolchain.toml
+# pins `channel = "stable"`, which is a different toolchain from the pinned
+# version the base image ships as default — adding the target beforehand would
+# attach it to the wrong one, and the build fails with "can't find crate for `core`".
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    rustup target add x86_64-pc-windows-gnu \
+ && cargo build --release --target x86_64-pc-windows-gnu -p ps-cli \
+ && mkdir -p /out \
+ && cp target/x86_64-pc-windows-gnu/release/exoclave.exe /out/exoclave.exe
+
+# Export-only stage: `docker build --target windows -o type=local,dest=dist`
+# drops exoclave.exe into ./dist with no image left behind.
+FROM scratch AS windows
+COPY --from=windows-builder /out/exoclave.exe /exoclave.exe
+
 # ---------------------------------------------------------------- runtime ----
 FROM alpine:3.21 AS runtime
 
