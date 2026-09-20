@@ -1,0 +1,22 @@
+[package]
+name = "ps-tunnel"
+description = "Out-of-band observation of a device's traffic via an HTTP proxy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ps-model.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-std"] }
+
+[lints]
+workspace = true

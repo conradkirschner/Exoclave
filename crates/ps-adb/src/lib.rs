@@ -19,6 +19,7 @@
 pub mod devices;
 pub mod fake;
 pub mod parse;
+pub mod proxy;
 
 use ps_model::{BootState, DeviceIdentity, Package};
 use std::future::Future;
@@ -47,6 +48,25 @@ pub enum AdbError {
 
     #[error("device is unauthorised: accept the USB debugging prompt on the phone")]
     Unauthorised,
+
+    /// Writing a secure setting was refused.
+    ///
+    /// On stock Android, `adb shell` runs as `com.android.shell`, which holds
+    /// `WRITE_SECURE_SETTINGS` — so this does not happen. Xiaomi layers an
+    /// extra restriction on top, gated behind a Developer options toggle that
+    /// wants a signed-in Mi account.
+    #[error(
+        "the phone refused to let this computer change a system setting. On Xiaomi, \
+         enable Developer options \u{2192} \u{201c}USB debugging (Security settings)\u{201d}; \
+         it needs a signed-in Mi account and a SIM in the phone"
+    )]
+    SecureSettingsDenied,
+
+    #[error(
+        "the proxy setting could not be cleared and is still {remaining}. The phone may \
+         have no internet until it is. Run: adb shell settings put global http_proxy :0"
+    )]
+    ProxyNotCleared { remaining: String },
 }
 
 pub type AdbResult<T> = Result<T, AdbError>;
